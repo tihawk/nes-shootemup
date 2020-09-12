@@ -125,10 +125,11 @@ CLEARENTITIES:
     STA entities+Entity::ypos, x
     LDA #$00
     STA entities+Entity::type, x
+    TXA
+    CLC
+    ADC #.sizeof(Entity)
+    TAX
     LDA #$FF
-    INX     ; faster to do 3 increments than an add because it's 2 less cycles
-    INX
-    INX
     CPX #TOTALENTITIES
     BNE CLEARENTITIES
 
