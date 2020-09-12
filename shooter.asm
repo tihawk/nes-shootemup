@@ -321,7 +321,7 @@ checkarelease:
 addbullet:
     LDX #$00
 addbulletloop:
-    CPX #TOTALENTITIES-.sizeof(Entity)  ; stop here because we're interested in up to 1c but we don't want to go past that
+    CPX #TOTALENTITIES
     BEQ finishcontrols                  ; if we've hit the max, then there are no more available entities for this
     LDA entities+Entity::type, x        ; get the entity type from memory
     CMP #EntityType::NoEntity           ; if this is a used entity slot?
