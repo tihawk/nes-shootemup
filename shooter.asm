@@ -18,10 +18,23 @@
     FlyBy = 3
 .endscope
 
+; FlyBy entity self byte map
+; ---- ----
+; |||| ||||
+; |||| |||+ Speed of flyby
+; |||| ||+- null
+; |||| |+-- null
+; |||| +--- null
+; |||+----- null
+; ||+------ null
+; |+------- null
+; +-------- null
+
 .struct Entity
     xpos .byte
     ypos .byte
     type .byte
+    self .byte ; entity-specific data
 .endstruct
 
 .segment "STARTUP"
@@ -33,7 +46,7 @@ controller: .res 1  ; stores state of controller
 scrollx:    .res 1  ; screen scroll
 scrolly:    .res 1
 
-MAXENTITIES = 10
+MAXENTITIES = 20
 entities:   .res .sizeof(Entity) * MAXENTITIES
 TOTALENTITIES = .sizeof(Entity) * MAXENTITIES
 
@@ -304,6 +317,23 @@ donecheckingdirectional:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 checkbuttons:
 
+checkb:
+    LDA controller
+    AND #$40
+    BEQ checkbrelease
+    LDA buttonflag
+    ORA #$02
+    STA buttonflag
+    JMP checka
+checkbrelease:
+    LDA buttonflag
+    AND #$02
+    BEQ checka
+    LDA buttonflag
+    EOR #$02
+    STA buttonflag
+    JMP addflyby
+
 checka:
     LDA controller
     AND #$80
@@ -316,7 +346,9 @@ checkarelease:
     LDA buttonflag
     AND #$01
     BEQ finishcontrols
-    DEC buttonflag      ; for a this works because it's bit 1
+    LDA buttonflag
+    EOR #$01
+    STA buttonflag
     JMP addbullet
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 addbullet:
@@ -342,6 +374,28 @@ addbulletentity:
     LDA #EntityType::Bullet
     STA entities+Entity::type, x
     JMP finishcontrols
+addflyby:
+    LDX #$00
+addflybyloop:
+    CPX #TOTALENTITIES
+    BEQ finishcontrols
+    LDA entities+Entity::type, x
+    CMP #EntityType::NoEntity
+    BEQ addflybyentity
+    TXA
+    CLC
+    ADC #.sizeof(Entity)
+    TAX
+    JMP addflybyloop
+addflybyentity:
+    LDA entities+Entity::xpos
+    STA entities+Entity::xpos, x
+    LDA #$08
+    STA entities+Entity::ypos, x
+    LDA #EntityType::FlyBy
+    STA entities+Entity::type, x
+    JMP finishcontrols
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 finishcontrols:
 processscrolling:
@@ -363,25 +417,38 @@ processentities:
 processentitiesloop:
     LDA entities+Entity::type, x
     CMP #EntityType::Bullet
-    BNE skipentity
+    BEQ processbullet
+    CMP #EntityType::FlyBy
+    BEQ processflyby
+    JMP skipentity
 processbullet:
     LDA entities+Entity::ypos, x
     SEC
     SBC #$03
     STA entities+Entity::ypos, x
-    BCS entitycomplete
+    BCS entitycomplete              ; if the carry was cleared after subtraction, the ypos has flipped on the other side. remove
+    JMP clearentity
+processflyby:
+    LDA entities+Entity::ypos, x
+    CLC
+    ADC #$01
+    STA entities+Entity::ypos, x
+    BCC entitycomplete             ; if the carry was set after addition, the ypos has flipped. remove
+    JMP clearentity
+clearentity:
     LDA #EntityType::NoEntity
     STA entities+Entity::type, x
     LDA #$FF
     STA entities+Entity::xpos, x
     STA entities+Entity::ypos, x
+    JMP entitycomplete
 entitycomplete:
 skipentity:
     TXA
     CLC
     ADC #.sizeof(Entity)
     TAX
-    CMP #$1E
+    CMP #TOTALENTITIES
     BNE processentitiesloop
 ; doneprocessingentities:
 
@@ -415,6 +482,8 @@ DRAWENTITIES:
     BEQ PLAYERSPRITE
     CMP #EntityType::Bullet
     BEQ BULLET
+    CMP #EntityType::FlyBy
+    BEQ FLYBY
     JMP CHECKENDPSRITE
 
 BULLET:
@@ -435,6 +504,21 @@ BULLET:
     JMP CHECKENDPSRITE
 
 FLYBY:
+    LDA entities+Entity::ypos, x ; y
+    STA (spritemem), y
+    INY
+    LDA #$02 ; tile
+    STA (spritemem), y
+    INY
+    LDA #$01 ; palette etc
+    STA (spritemem), y
+    INY
+    LDA entities+Entity::xpos, x ; x
+    STA (spritemem), y
+    INY
+    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+    JMP CHECKENDPSRITE
 PLAYERSPRITE:
     ; top left sprite
     LDA entities+Entity::ypos, x ; y
