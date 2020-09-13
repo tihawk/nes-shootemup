@@ -531,39 +531,54 @@ checkbulletcollisionloop:
     LDA entities+Entity::type, x
     CMP #EntityType::FlyBy
     BNE checkbulletcollisionentityfinished
-    ; this whole part until checkcollisionpoint2 only checks if the left-most point of the bullet has hit the target
     
+    ; precalculate bounding box
+    LDA entities+Entity::xpos, x
+    STA boundingleft
+    CLC
+    ADC #$08
+    STA boundingright
+    LDA entities+Entity::ypos, x
+    STA boundingtop
+    CLC
+    ADC #$08
+    STA boundingbottom
+
+    TXA
+    PHA
+    LDA BULLETCOLLISIONPOINTSCOUNT
+    STA collisiontmp
+    LDX #$00
+collisionpointsloop:
+    CPX collisiontmp
+    BEQ collisionpointsloopfailed
+
     LDA entities+Entity::xpos, y    ; get bullet's current xpos bul_x
     CLC
-    ADC #$01                        ; get left-most bullet point bul_x + 1
-    CMP entities+Entity::xpos, x    ; compare to flyby xpos fly_x. we care if bul_x+1 >= fly_x
-    BCC checkcollisionpoint2        ; CMP sets the carry if A >=, so if not set bul_x+1 < fly_x
-    PHA                             ; juggling
-    LDA entities+Entity::xpos, x    ; fly_x
-    CLC
-    ADC #$08                        ; fly_x + 8 - right side
-    STA collisiontmp
-    PLA                             ; get bul_x + 1 back into A
-    CMP collisiontmp                ; compare to see if bul_x+1 <= fly_x+8
+    ADC BULLETCOLLISIONPOINTSX, x   ; get left-most bullet point bul_x + 1
+    CMP boundingleft                ; compare to flyby xpos fly_x. we care if bul_x+1 >= fly_x
+    BCC checkcollisionpointnext     ; CMP sets the carry if A >=, so if not set bul_x+1 < fly_x
+    CMP boundingright                ; compare to see if bul_x+1 <= fly_x+8
     BEQ skipx
-    BCS checkcollisionpoint2        ; if bul_x+1 > fly_x+8, no collision
+    BCS checkcollisionpointnext     ; if bul_x+1 > fly_x+8, no collision
 skipx:
     ; we now know we're within x-range, now let's check the ypos range
     LDA entities+Entity::ypos, y    ; bul_y
     CLC
-    ADC #$04
-    CMP entities+Entity::ypos, x    ; conmpare to see if bul_y+4 >= fly_y
-    BCC checkcollisionpoint2
-    PHA
-    LDA entities+Entity::ypos, x     ; fly_y
-    CLC
-    ADC #$08                        ; fly_y + 8 - bottom side
-    STA collisiontmp
-    PLA                             ; get bul_y+4 back into A
-    CMP collisiontmp                ; compare to see if bul_y+4 <= fly_y+8
+    ADC BULLETCOLLISIONPOINTSY, x
+    CMP boundingtop                 ; conmpare to see if bul_y+4 >= fly_y
+    BCC checkcollisionpointnext
+    CMP boundingbottom              ; compare to see if bul_y+4 <= fly_y+8
     BEQ skipy
-    BCS checkcollisionpoint2        ; if carry set, then bul_y+4 >= fly_y+8
+    BCS checkcollisionpointnext     ; if carry set, then bul_y+4 >= fly_y+8
 skipy:
+    JMP collisionpointsloopfinished
+checkcollisionpointnext:
+    INX
+    JMP collisionpointsloop
+collisionpointsloopfinished:
+    PLA
+    TAX
     ; we now know that both xpos and ypos of the left-most side of the bullet are within the bounds of the flyby
     LDA #EntityType::NoEntity
     STA entities+Entity::type, y    ; destory bullet
@@ -573,9 +588,10 @@ skipy:
     STA entities+Entity::ypos, x
     STA entities+Entity::xpos, y
     STA entities+Entity::ypos, y
-    ; JMP finishedbulletcollision
-checkcollisionpoint2:
-
+    JMP finishedbulletcollision
+collisionpointsloopfailed:
+    PLA
+    TAX
 checkbulletcollisionentityfinished:
     TXA
     CLC
