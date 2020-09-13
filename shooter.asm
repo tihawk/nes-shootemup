@@ -59,8 +59,8 @@ scrolly:    .res 1
 MAXENTITIES = 20
 entities:   .res .sizeof(Entity) * MAXENTITIES
 TOTALENTITIES = .sizeof(Entity) * MAXENTITIES
-POSITIVE_EXTREMUM_VELOCITY = 15
-NEGATIVE_EXTREMUM_VELOCITY = $F1
+POSITIVE_EXTREMUM_VELOCITY = 12
+NEGATIVE_EXTREMUM_VELOCITY = $F4
 
 buttonflag:     .res 1
 swap:           .res 1  ; related to bg scrolling. scroll register allows for 255 values. this keeps memory of which offset is in use
@@ -534,15 +534,14 @@ processplayer:
     BPL processplayerremovexvel         ; if velocity is positive, go to decrement
     SEC
     SBC #NEGATIVE_EXTREMUM_VELOCITY
-    BVS skipxveleor
+    BVC skipxveleor
     EOR #$80
 skipxveleor:
-    BPL clampnegativexvel
-    LDA entities+Entity::xvel, x
-    JMP skiplowerboundingxvel
-clampnegativexvel:
+    BPL reloadoriginalxvel
     LDA #NEGATIVE_EXTREMUM_VELOCITY
     STA entities+Entity::xvel, x
+reloadoriginalxvel:
+    LDA entities+Entity::xvel, x
 skiplowerboundingxvel:
     SEC                                 ; velocity is negative, so we first set the carry
     ROR                                 ; to be able to divide by 4
@@ -575,15 +574,14 @@ processplayerxveldone:
     BPL processplayerremoveyvel         ; if velocity is positive, go to decrement
     SEC
     SBC #NEGATIVE_EXTREMUM_VELOCITY
-    BVS skipyveleor
+    BVC skipyveleor
     EOR #$80
 skipyveleor:
-    BPL clampnegativeyvel
-    LDA entities+Entity::yvel, x
-    JMP skiplowerboundingyvel
-clampnegativeyvel:
+    BPL reloadoriginalyvel
     LDA #NEGATIVE_EXTREMUM_VELOCITY
     STA entities+Entity::yvel, x
+reloadoriginalyvel:
+    LDA entities+Entity::yvel, x
 skiplowerboundingyvel:
     SEC                                 ; velocity is negative, so we first set the carry
     ROR                                 ; to be able to divide by 4
