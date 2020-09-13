@@ -59,7 +59,8 @@ scrolly:    .res 1
 MAXENTITIES = 20
 entities:   .res .sizeof(Entity) * MAXENTITIES
 TOTALENTITIES = .sizeof(Entity) * MAXENTITIES
-MAXVELOCITY = 15
+POSITIVE_EXTREMUM_VELOCITY = 15
+NEGATIVE_EXTREMUM_VELOCITY = $F1
 
 buttonflag:     .res 1
 swap:           .res 1  ; related to bg scrolling. scroll register allows for 255 values. this keeps memory of which offset is in use
@@ -519,14 +520,30 @@ processentitiesloop:
     CMP #EntityType::Player
     BEQ processplayer
     CMP #EntityType::Bullet
-    BEQ processbullet
+    BNE notbullet_skiptonexttype
+    JMP processbullet
+notbullet_skiptonexttype:
     CMP #EntityType::FlyBy
-    BEQ processflyby
+    BNE notflyby_skiptonexttype
+    JMP processflyby
+notflyby_skiptonexttype:
     JMP skipentity
 processplayer:
     LDA entities+Entity::xvel, x
     BEQ processplayerxveldone           ; if the velocity is zero, we're done
     BPL processplayerremovexvel         ; if velocity is positive, go to decrement
+    SEC
+    SBC #NEGATIVE_EXTREMUM_VELOCITY
+    BVS skipxveleor
+    EOR #$80
+skipxveleor:
+    BPL clampnegativexvel
+    LDA entities+Entity::xvel, x
+    JMP skiplowerboundingxvel
+clampnegativexvel:
+    LDA #NEGATIVE_EXTREMUM_VELOCITY
+    STA entities+Entity::xvel, x
+skiplowerboundingxvel:
     SEC                                 ; velocity is negative, so we first set the carry
     ROR                                 ; to be able to divide by 4
     SEC
@@ -537,10 +554,10 @@ processplayer:
     INC entities+Entity::xvel, x        ; negative velocity, increment
     JMP processplayerxveldone
 processplayerremovexvel:
-    CMP #MAXVELOCITY                            ; max velicity is 40, so compare and limit accordingly
+    CMP #POSITIVE_EXTREMUM_VELOCITY                            ; max velicity is 40, so compare and limit accordingly
     BEQ skipupperboundingxvel
     BCC skipupperboundingxvel
-    LDA #MAXVELOCITY
+    LDA #POSITIVE_EXTREMUM_VELOCITY
     STA entities+Entity::xvel, x
 skipupperboundingxvel:
     CLC                                 ; velocity is positive, so we first clear the carry
@@ -556,6 +573,18 @@ processplayerxveldone:
     LDA entities+Entity::yvel, x
     BEQ entitycomplete                  ; if the velocity is zero, we're done
     BPL processplayerremoveyvel         ; if velocity is positive, go to decrement
+    SEC
+    SBC #NEGATIVE_EXTREMUM_VELOCITY
+    BVS skipyveleor
+    EOR #$80
+skipyveleor:
+    BPL clampnegativeyvel
+    LDA entities+Entity::yvel, x
+    JMP skiplowerboundingyvel
+clampnegativeyvel:
+    LDA #NEGATIVE_EXTREMUM_VELOCITY
+    STA entities+Entity::yvel, x
+skiplowerboundingyvel:
     SEC                                 ; velocity is negative, so we first set the carry
     ROR                                 ; to be able to divide by 4
     SEC
@@ -566,10 +595,10 @@ processplayerxveldone:
     INC entities+Entity::yvel, x        ; negative velocity, increment
     JMP entitycomplete
 processplayerremoveyvel:
-    CMP #MAXVELOCITY                            ; max velicity is 40, so compare and limit accordingly
+    CMP #POSITIVE_EXTREMUM_VELOCITY                            ; max velicity is 40, so compare and limit accordingly
     BEQ skipupperboundingyvel
     BCC skipupperboundingyvel
-    LDA #MAXVELOCITY
+    LDA #POSITIVE_EXTREMUM_VELOCITY
     STA entities+Entity::yvel, x
 skipupperboundingyvel:
     CLC                                 ; velocity is positive, so we first clear the carry
