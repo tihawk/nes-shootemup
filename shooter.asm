@@ -13,9 +13,15 @@
 
 .scope EntityType
     NoEntity = 0
-    PlayerType = 1
-    Bullet = 2
-    FlyBy = 3
+    Player   = 1
+    Bullet   = 2
+    FlyBy    = 3
+.endscope
+
+.scope GameState
+    TitleScreen = 0
+    GamePlay    = 1
+    Paused      = 2
 .endscope
 
 ; FlyBy entity self byte map
@@ -51,6 +57,7 @@ scrolly:    .res 1
 MAXENTITIES = 20
 entities:   .res .sizeof(Entity) * MAXENTITIES
 TOTALENTITIES = .sizeof(Entity) * MAXENTITIES
+MAXVELOCITY = 15
 
 buttonflag:     .res 1
 swap:           .res 1  ; related to bg scrolling. scroll register allows for 255 values. this keeps memory of which offset is in use
@@ -133,7 +140,7 @@ CLEARMEM:
     LDA #$00
     STA entities+Entity::xvel
     STA entities+Entity::yvel
-    LDA #EntityType::PlayerType
+    LDA #EntityType::Player
     STA entities+Entity::type
 
     LDA #$10
@@ -236,22 +243,6 @@ ATTLOAD:
     STA spritemem+1
 
 GAMELOOP:
-INITIALISESPRITES:
-    LDY #$00
-    LDA #$FF
-INITIALISESPRITESLOOP:
-    STA (spritemem), y
-    INY
-    EOR #$FF
-    STA (spritemem), y
-    INY
-    STA (spritemem), y
-    INY
-    EOR #$FF
-    STA (spritemem), y
-    INY 
-    BEQ startreadcontrollers
-    JMP INITIALISESPRITESLOOP
 
 startreadcontrollers:
 
@@ -291,6 +282,24 @@ readcontrollerbuttons:
     ROL controller
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+INITIALISESPRITES:
+    LDY #$00
+    LDA #$FF
+INITIALISESPRITESLOOP:
+    STA (spritemem), y
+    INY
+    EOR #$FF
+    STA (spritemem), y
+    INY
+    STA (spritemem), y
+    INY
+    EOR #$FF
+    STA (spritemem), y
+    INY 
+    BEQ startreadcontrollers
+    JMP INITIALISESPRITESLOOP
+
 
 checkleft:
     LDA controller
@@ -426,7 +435,7 @@ processentities:
     LDX #$00
 processentitiesloop:
     LDA entities+Entity::type, x
-    CMP #EntityType::PlayerType
+    CMP #EntityType::Player
     BEQ processplayer
     CMP #EntityType::Bullet
     BEQ processbullet
@@ -435,35 +444,61 @@ processentitiesloop:
     JMP skipentity
 processplayer:
     LDA entities+Entity::xvel, x
+    BEQ processplayerxveldone           ; if the velocity is zero, we're done
+    BPL processplayerremovexvel         ; if velocity is positive, go to decrement
+    SEC                                 ; velocity is negative, so we first set the carry
+    ROR                                 ; to be able to divide by 4
+    SEC
+    ROR
     CLC
-    ; ROR
-    ; CLC
-    ; ROR                             ; xvel / 4
-    ADC entities+Entity::xpos, x
+    ADC entities+Entity::xpos, x        ; and then add that to the xpos of the player
     STA entities+Entity::xpos, x
-    LDA entities+Entity::xvel, x
-    BEQ processplayerxveldone
-    BPL processplayerremovexvel
-    INC entities+Entity::xvel, x
+    INC entities+Entity::xvel, x        ; negative velocity, increment
     JMP processplayerxveldone
 processplayerremovexvel:
-    DEC entities+Entity::xvel, x
+    CMP #MAXVELOCITY                            ; max velicity is 40, so compare and limit accordingly
+    BEQ skipupperboundingxvel
+    BCC skipupperboundingxvel
+    LDA #MAXVELOCITY
+    STA entities+Entity::xvel, x
+skipupperboundingxvel:
+    CLC                                 ; velocity is positive, so we first clear the carry
+    ROR                                 ; to be able to divide by 4
+    CLC
+    ROR
+    CLC
+    ADC entities+Entity::xpos, x        ; and then add that to the xpos of the player
+    STA entities+Entity::xpos, x
+    DEC entities+Entity::xvel, x        ; positive velocity, decrement
     JMP processplayerxveldone
 processplayerxveldone:
     LDA entities+Entity::yvel, x
+    BEQ entitycomplete                  ; if the velocity is zero, we're done
+    BPL processplayerremoveyvel         ; if velocity is positive, go to decrement
+    SEC                                 ; velocity is negative, so we first set the carry
+    ROR                                 ; to be able to divide by 4
+    SEC
+    ROR
     CLC
-    ; ROR
-    ; CLC
-    ; ROR                             ; yvel / 4
-    ADC entities+Entity::ypos, x
+    ADC entities+Entity::ypos, x        ; and then add that to the xpos of the player
     STA entities+Entity::ypos, x
-    LDA entities+Entity::yvel, x
-    BEQ entitycomplete
-    BPL processplayerremoveyvel
-    INC entities+Entity::yvel, x
+    INC entities+Entity::yvel, x        ; negative velocity, increment
     JMP entitycomplete
 processplayerremoveyvel:
-    DEC entities+Entity::yvel, x
+    CMP #MAXVELOCITY                            ; max velicity is 40, so compare and limit accordingly
+    BEQ skipupperboundingyvel
+    BCC skipupperboundingyvel
+    LDA #MAXVELOCITY
+    STA entities+Entity::yvel, x
+skipupperboundingyvel:
+    CLC                                 ; velocity is positive, so we first clear the carry
+    ROR                                 ; to be able to divide by 4
+    CLC
+    ROR
+    CLC
+    ADC entities+Entity::ypos, x        ; and then add that to the xpos of the player
+    STA entities+Entity::ypos, x
+    DEC entities+Entity::yvel, x        ; positive velocity, decrement
     JMP entitycomplete
 processbullet:
     LDA entities+Entity::ypos, x
@@ -503,8 +538,9 @@ skipentity:
     ADC #.sizeof(Entity)
     TAX
     CMP #TOTALENTITIES
-    BNE processentitiesloop
-; doneprocessingentities:
+    BEQ doneprocessingentities
+    JMP processentitiesloop
+doneprocessingentities:
 
 hasdrawcompleted:
     LDA drawcomplete
@@ -625,7 +661,7 @@ VBLANK:
     STA spritemem+1
 DRAWENTITIES:
     LDA entities+Entity::type, X
-    CMP #EntityType::PlayerType
+    CMP #EntityType::Player
     BEQ PLAYERSPRITE
     CMP #EntityType::Bullet
     BEQ BULLET
