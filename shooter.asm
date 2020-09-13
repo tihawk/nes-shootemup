@@ -61,6 +61,7 @@ seed:           .res 2  ; initialise 16-bit seed to any value except 0. randomis
 flicker:        .res 1  ; counter for determining when the colour of the ship should flicker
 spritemem:      .res 2
 drawcomplete:   .res 1
+collisiontmp:   .res 1  ; stores variables for collision detection subroutine
 
 .segment "CODE"
 
@@ -129,11 +130,9 @@ CLEARMEM:
     LDA #$10
     STA $07F0
 
-    LDX #$03
+    LDX #.sizeof(Entity)
     LDA #$FF
 CLEARENTITIES:
-    LDA #$11
-    STA $07F1
     STA entities+Entity::xpos, x
     STA entities+Entity::ypos, x
     LDA #$00
@@ -146,8 +145,6 @@ CLEARENTITIES:
     CPX #TOTALENTITIES
     BNE CLEARENTITIES
 
-    LDA #$12
-    STA $07F2
 ; clear register and set palette address
     LDA $2002
     LDA #$3F
@@ -424,16 +421,26 @@ processentitiesloop:
 processbullet:
     LDA entities+Entity::ypos, x
     SEC
-    SBC #$03
+    SBC #$02
+    ; check collision with other entities
+    ; if collision occurs, destroy the fliby and bullet
+    JSR checkbulletcollision
     STA entities+Entity::ypos, x
     BCS entitycomplete              ; if the carry was cleared after subtraction, the ypos has flipped on the other side. remove
     JMP clearentity
 processflyby:
+    ; todo, change how speed is handled, it currently uses the whole SELF byte
+    INC entities+Entity::self, x
+    LDA entities+Entity::self, x
+    CMP #$02
+    BNE skipmove
+    LDA #$00
+    STA entities+Entity::self, x
+    INC entities+Entity::ypos, x
+skipmove:
     LDA entities+Entity::ypos, x
-    CLC
-    ADC #$01
-    STA entities+Entity::ypos, x
-    BCC entitycomplete             ; if the carry was set after addition, the ypos has flipped. remove
+    CMP #$FE
+    BNE entitycomplete             ; if the carry was set after addition, the ypos has flipped. remove
     JMP clearentity
 clearentity:
     LDA #EntityType::NoEntity
@@ -459,6 +466,83 @@ hasdrawcompleted:
     LDA #$00
     STA drawcomplete
     JMP GAMELOOP
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;  checkbulletcollision
+;;  in: X contains index of current entity (e.g. bullet), out: none, note: modifies Y
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+checkbulletcollision:
+    PHA     ; A, X, P
+    TXA
+    PHA
+    TAY     ; this contains the index of the entity from preceeding call
+    PHP
+    LDX #.sizeof(Entity)
+checkbulletcollisionloop:
+    CPX #TOTALENTITIES
+    BEQ finishedbulletcollision
+    LDA entities+Entity::type, x
+    CMP #EntityType::FlyBy
+    BNE checkbulletcollisionentityfinished
+    ; this whole part until checkcollisionpoint2 only checks if the left-most point of the bullet has hit the target
+    
+    LDA entities+Entity::xpos, y    ; get bullet's current xpos bul_x
+    CLC
+    ADC #$01                        ; get left-most bullet point bul_x + 1
+    CMP entities+Entity::xpos, x    ; compare to flyby xpos fly_x. we care if bul_x+1 >= fly_x
+    BCC checkcollisionpoint2        ; CMP sets the carry if A >=, so if not set bul_x+1 < fly_x
+    PHA                             ; juggling
+    LDA entities+Entity::xpos, x    ; fly_x
+    CLC
+    ADC #$08                        ; fly_x + 8 - right side
+    STA collisiontmp
+    PLA                             ; get bul_x + 1 back into A
+    CMP collisiontmp                ; compare to see if bul_x+1 <= fly_x+8
+    BEQ skipx
+    BCS checkcollisionpoint2        ; if bul_x+1 > fly_x+8, no collision
+skipx:
+    ; we now know we're within x-range, now let's check the ypos range
+    LDA entities+Entity::ypos, y    ; bul_y
+    CLC
+    ADC #$04
+    CMP entities+Entity::ypos, x    ; conmpare to see if bul_y+4 >= fly_y
+    BCC checkcollisionpoint2
+    PHA
+    LDA entities+Entity::ypos, x     ; fly_y
+    CLC
+    ADC #$08                        ; fly_y + 8 - bottom side
+    STA collisiontmp
+    PLA                             ; get bul_y+4 back into A
+    CMP collisiontmp                ; compare to see if bul_y+4 <= fly_y+8
+    BEQ skipy
+    BCS checkcollisionpoint2        ; if carry set, then bul_y+4 >= fly_y+8
+skipy:
+    ; we now know that both xpos and ypos of the left-most side of the bullet are within the bounds of the flyby
+    LDA #EntityType::NoEntity
+    STA entities+Entity::type, y    ; destory bullet
+    STA entities+Entity::type, x    ; destroy entity
+    LDA #$FF
+    STA entities+Entity::xpos, x
+    STA entities+Entity::ypos, x
+    STA entities+Entity::xpos, y
+    STA entities+Entity::ypos, y
+    ; JMP finishedbulletcollision
+checkcollisionpoint2:
+
+checkbulletcollisionentityfinished:
+    TXA
+    CLC
+    ADC #.sizeof(Entity)
+    TAX
+    JMP checkbulletcollisionloop
+
+finishedbulletcollision:
+    PLP     ; P, X, A
+    PLA
+    TAX
+    PLA
+    RTS
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 VBLANK:
 
@@ -646,7 +730,7 @@ donewithppu:
     TAX
     PLP
     PLA
-    inc drawcomplete
+    INC drawcomplete
     RTI
 
 PALETTE:
