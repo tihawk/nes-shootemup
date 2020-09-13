@@ -33,6 +33,8 @@
 .struct Entity
     xpos .byte
     ypos .byte
+    xvel .byte
+    yvel .byte
     type .byte
     self .byte ; entity-specific data
 .endstruct
@@ -62,6 +64,10 @@ flicker:        .res 1  ; counter for determining when the colour of the ship sh
 spritemem:      .res 2
 drawcomplete:   .res 1
 collisiontmp:   .res 1  ; stores variables for collision detection subroutine
+boundingleft:   .res 1
+boundingright:  .res 1
+boundingtop:    .res 1
+boundingbottom: .res 1
 
 .segment "CODE"
 
@@ -124,6 +130,9 @@ CLEARMEM:
     STA entities+Entity::xpos
     LDA #$78
     STA entities+Entity::ypos
+    LDA #$00
+    STA entities+Entity::xvel
+    STA entities+Entity::yvel
     LDA #EntityType::PlayerType
     STA entities+Entity::type
 
@@ -287,27 +296,31 @@ checkleft:
     LDA controller
     AND #$02
     BEQ checkright
-    DEC entities+Entity::xpos
+    DEC entities+Entity::xvel
+    DEC entities+Entity::xvel
     JMP checkup ; dont allow for left and right at the same time
 
 checkright:
     LDA controller
     AND #$01
     BEQ checkup
-    INC entities+Entity::xpos
+    INC entities+Entity::xvel
+    INC entities+Entity::xvel
 
 checkup:
     LDA controller
     AND #$08
     BEQ checkdown
-    DEC entities+Entity::ypos
+    DEC entities+Entity::yvel
+    DEC entities+Entity::yvel
     JMP donecheckingdirectional ; dont allow for up and down to be pressed at the same time
 
 checkdown:
     LDA controller
     AND #$04
     BEQ donecheckingdirectional
-    INC entities+Entity::ypos
+    INC entities+Entity::yvel
+    INC entities+Entity::yvel
 
 donecheckingdirectional:
 
@@ -410,14 +423,48 @@ processscrolling:
 donescroll:
 
 processentities:
-    LDX #.sizeof(Entity)
+    LDX #$00
 processentitiesloop:
     LDA entities+Entity::type, x
+    CMP #EntityType::PlayerType
+    BEQ processplayer
     CMP #EntityType::Bullet
     BEQ processbullet
     CMP #EntityType::FlyBy
     BEQ processflyby
     JMP skipentity
+processplayer:
+    LDA entities+Entity::xvel, x
+    CLC
+    ; ROR
+    ; CLC
+    ; ROR                             ; xvel / 4
+    ADC entities+Entity::xpos, x
+    STA entities+Entity::xpos, x
+    LDA entities+Entity::xvel, x
+    BEQ processplayerxveldone
+    BPL processplayerremovexvel
+    INC entities+Entity::xvel, x
+    JMP processplayerxveldone
+processplayerremovexvel:
+    DEC entities+Entity::xvel, x
+    JMP processplayerxveldone
+processplayerxveldone:
+    LDA entities+Entity::yvel, x
+    CLC
+    ; ROR
+    ; CLC
+    ; ROR                             ; yvel / 4
+    ADC entities+Entity::ypos, x
+    STA entities+Entity::ypos, x
+    LDA entities+Entity::yvel, x
+    BEQ entitycomplete
+    BPL processplayerremoveyvel
+    INC entities+Entity::yvel, x
+    JMP entitycomplete
+processplayerremoveyvel:
+    DEC entities+Entity::yvel, x
+    JMP entitycomplete
 processbullet:
     LDA entities+Entity::ypos, x
     SEC
@@ -732,6 +779,13 @@ donewithppu:
     PLA
     INC drawcomplete
     RTI
+
+BULLETCOLLISIONPOINTSCOUNT:
+    .byte $03
+BULLETCOLLISIONPOINTSX:
+    .byte $01, $04, $07
+BULLETCOLLISIONPOINTSY:
+    .byte $04, $01, $04
 
 PALETTE:
     .byte $0d, $30, $16, $27
