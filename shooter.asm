@@ -19,9 +19,11 @@
 .endscope
 
 .scope GameState
-    TitleScreen = 0
-    GamePlay    = 1
-    Paused      = 2
+    LoadTitleScreen = 0
+    TitleScreen     = 1
+    LoadNewGame     = 2
+    GamePlay        = 3
+    Paused          = 4
 .endscope
 
 ; FlyBy entity self byte map
@@ -75,6 +77,7 @@ boundingleft:   .res 1
 boundingright:  .res 1
 boundingtop:    .res 1
 boundingbottom: .res 1
+gamestate:      .res 1
 
 .segment "CODE"
 
@@ -282,7 +285,65 @@ readcontrollerbuttons:
     ROL controller
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
 
+
+
+    LDA gamestate
+    CMP #GameState::LoadTitleScreen
+    BEQ LOAD_TITLE_SCREEN_STATE
+    CMP #GameState::TitleScreen
+    BEQ TITLE_SCREEN_STATE
+    CMP #GameState::LoadNewGame
+    BEQ LOAD_NEW_GAME_STATE
+    CMP #GameState::GamePlay
+    BEQ GAMEPLAY_STATE
+    CMP #GameState::Paused
+    BEQ PAUSED_STATE
+; PROBLEM:
+;     JMP PROBLEM
+
+LOAD_TITLE_SCREEN_STATE:
+    ; load titlescreen assets to name table
+    LDA #GameState::TitleScreen
+    STA gamestate
+    JMP GAMELOOP
+
+TITLE_SCREEN_STATE:
+    LDA controller
+    AND #$10
+    BEQ GAMELOOP
+    LDA #GameState::LoadNewGame
+    STA gamestate
+    JMP hasdrawcompleted
+
+LOAD_NEW_GAME_STATE:
+    ; load game assets to name table
+    ; initialise other stuff
+    LDA #GameState::GamePlay
+    STA gamestate
+    JMP GAMELOOP
+
+PAUSED_STATE:
+    LDA controller
+    AND #$10
+    BEQ GAMELOOP
+    LDA #GameState::GamePlay
+    STA gamestate
+    JMP hasdrawcompleted
+
+GAMEPLAY_STATE:
 INITIALISESPRITES:
     LDY #$00
     LDA #$FF
@@ -297,9 +358,10 @@ INITIALISESPRITESLOOP:
     EOR #$FF
     STA (spritemem), y
     INY 
-    BEQ startreadcontrollers
+    BEQ spriteinitfinished
     JMP INITIALISESPRITESLOOP
 
+spriteinitfinished:
 
 checkleft:
     LDA controller
@@ -335,6 +397,25 @@ donecheckingdirectional:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 checkbuttons:
+
+checkstart:
+    LDA controller
+    AND #$10
+    BEQ checkstartrelease
+    LDA buttonflag
+    ORA #$04
+    STA buttonflag
+    JMP checkb
+checkstartrelease:
+    LDA buttonflag
+    AND #$04
+    BEQ checkb
+    LDA buttonflag
+    EOR #$04
+    STA buttonflag
+    LDA GameState::Paused
+    STA gamestate
+    JMP hasdrawcompleted
 
 checkb:
     LDA controller
