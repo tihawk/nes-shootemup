@@ -11,11 +11,16 @@
     .byte $00
     .byte $00, $00, $00, $00, $00 ; Filler
 
+.scope TileLoadState
+    RLE             = 0
+    NoCompression   = 1
+.endscope
+
 .scope EntityType
-    NoEntity = 0
-    Player   = 1
-    Bullet   = 2
-    FlyBy    = 3
+    NoEntity        = 0
+    Player          = 1
+    Bullet          = 2
+    FlyBy           = 3
 .endscope
 
 .scope GameState
@@ -79,6 +84,7 @@ boundingright:  .res 1
 boundingtop:    .res 1
 boundingbottom: .res 1
 gamestate:      .res 1
+temp:           .res 1
 
 .segment "CODE"
 
@@ -136,21 +142,8 @@ CLEARMEM:
     LDA #$21
     STA hswaph
 
-; initialise entities+Entity::xpos
-    LDA #$80
-    STA entities+Entity::xpos
-    LDA #$78
-    STA entities+Entity::ypos
-    LDA #$00
-    STA entities+Entity::xvel
-    STA entities+Entity::yvel
-    LDA #EntityType::Player
-    STA entities+Entity::type
-
-    LDA #$10
-    STA $07F0
-
-    LDX #.sizeof(Entity)
+    ; LDX #.sizeof(Entity)
+    LDX #$00
     LDA #$FF
 CLEARENTITIES:
     STA entities+Entity::xpos, x
@@ -165,80 +158,61 @@ CLEARENTITIES:
     CPX #TOTALENTITIES
     BNE CLEARENTITIES
 
-; clear register and set palette address
-    LDA $2002
-    LDA #$3F
-    STA $2006
-    LDA #$10
-    STA $2006
 
-; initialise background hi and low
-    LDA #$10
-    STA seed
-    STA seed+1
+; ; initialise background hi and low
+;     LDA #$10
+;     STA seed
+;     STA seed+1
 
-    LDA #$02
-    STA scrolly
+;     LDA #$02
+;     STA scrolly
 
-    LDX #$00
-PALETTELOAD:
-    LDA PALETTE, x
-    STA $2007
-    INX
-    CPX #$20
-    BNE PALETTELOAD
+; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;     LDA #$C0
+;     STA bgloadlo
+;     LDA #$03
+;     STA bgloadhi
+;     LDY #$00
 
-    LDA #$C0
-    STA bgloadlo
-    LDA #$03
-    STA bgloadhi
-    LDY #$00
+;     LDA $2002
+;     LDA #$20
+;     STA $2006
+;     LDA #$00
+;     STA $2006
+; BGLOAD:
+;     JSR prng
+;     LSR
+;     STA $2007
+;     INY
+;     CPY #$00
+;     BNE SKIPGBINC
+;     INC bghi
+; SKIPGBINC:
+;     DEC bgloadlo
+;     LDA bgloadlo
+;     CMP #$FF
+;     BNE BGLOAD
+;     DEC bgloadhi
+;     LDA bgloadhi
+;     CMP #$FF
+;     BNE BGLOAD
 
-    LDA $2002
-    LDA #$20
-    STA $2006
-    LDA #$00
-    STA $2006
-BGLOAD:
-    JSR prng
-    LSR
-    STA $2007
-    INY
-    CPY #$00
-    BNE SKIPGBINC
-    INC bghi
-SKIPGBINC:
-    DEC bgloadlo
-    LDA bgloadlo
-    CMP #$FF
-    BNE BGLOAD
-    DEC bgloadhi
-    LDA bgloadhi
-    CMP #$FF
-    BNE BGLOAD
-
-; configure for loading the attributes
-    LDA $2002
-    LDA #$23
-    STA $2006
-    LDA #$C0
-    STA $2006
-    LDX #$00
-    TXA
-ATTLOAD:
-    STA $2007
-    INX
-    CPX #$08
-    BNE ATTLOAD
+; ; configure for loading the attributes
+;     LDA $2002
+;     LDA #$23
+;     STA $2006
+;     LDA #$C0
+;     STA $2006
+;     LDX #$00
+;     TXA
+; ATTLOAD:
+;     STA $2007
+;     INX
+;     CPX #$08
+;     BNE ATTLOAD
 
     JSR WAITFORVBLANK
-
-    LDA #%10000000
-    STA $2000
-    LDA #%00011110
-    STA $2001
 
     ; load spritemem
     LDA #$00
@@ -305,33 +279,185 @@ readcontrollerbuttons:
     CMP #GameState::LoadTitleScreen
     BEQ LOAD_TITLE_SCREEN_STATE
     CMP #GameState::TitleScreen
-    BEQ TITLE_SCREEN_STATE
+    BNE notstartingtitlescreen
+    JMP TITLE_SCREEN_STATE
+notstartingtitlescreen:
     CMP #GameState::LoadNewGame
-    BEQ LOAD_NEW_GAME_STATE
+    BNE notloadingnewgame
+    JMP LOAD_NEW_GAME_STATE
+notloadingnewgame:
     CMP #GameState::GamePlay
-    BEQ GAMEPLAY_STATE
+    BNE notstartinggameplay
+    JMP GAMEPLAY_STATE
+notstartinggameplay:
     CMP #GameState::Paused
-    BEQ PAUSED_STATE
+    BNE notpausing
+    JMP PAUSED_STATE
+notpausing:
 ; PROBLEM:
 ;     JMP PROBLEM
 
 LOAD_TITLE_SCREEN_STATE:
+
+; clear register and set palette address
+    LDA $2002
+    LDA #$3F
+    STA $2006
+    LDA #$10
+    STA $2006
+
+    LDX #$00
+PALETTELOAD:
+    LDA PALETTE, x
+    STA $2007
+    INX
+    CPX #$20
+    BNE PALETTELOAD
+
+;clear register
+    LDA $2002
+    LDA #$20
+    STA $2006
+    LDA #$00
+    STA $2006
+
     ; load titlescreen assets to name table
+    LDX #$00
+    LDA #TileLoadState::RLE
+    STA temp
+
+loadtitlescreenloop:
+    LDA TITLESCREEN, x
+    CMP #$FF
+    BNE ProcessData
+    INX
+    LDA TITLESCREEN, x
+    CMP #$FF
+    BEQ DONELOADINGTITLESCREEN
+    LDA temp                        ; single 0xFF = switch encoding
+    EOR #$01
+    STA temp
+    JMP loadtitlescreenloop
+ProcessData:
+    LDA temp
+    CMP #TileLoadState::RLE
+    BEQ LoadRunLength
+SingleByte:
+    LDA TITLESCREEN, x
+    STA $2007
+    INX
+    JMP loadtitlescreenloop
+LoadRunLength:
+    LDY TITLESCREEN, x
+    INX
+    LDA TITLESCREEN, x
+LoadRunLengthLoop:
+    STA $2007
+    DEY
+    CPY #$00
+    BNE LoadRunLengthLoop
+    INX
+    JMP loadtitlescreenloop
+
+DONELOADINGTITLESCREEN:
     LDA #GameState::TitleScreen
     STA gamestate
+
+    ; turn on some ppu stuff
+    LDA #%10000000
+    STA $2000
+    LDA #%00011110
+    STA $2001
+
     JMP GAMELOOP
 
 TITLE_SCREEN_STATE:
     LDA controller
     AND #$10
-    BEQ GAMELOOP
+    BNE startgamebuttonpressed
+    JMP GAMELOOP
+startgamebuttonpressed:
     LDA #GameState::LoadNewGame
     STA gamestate
     JMP hasdrawcompleted
 
 LOAD_NEW_GAME_STATE:
     ; load game assets to name table
+    ; initialise player
+    LDA #$80
+    STA entities+Entity::xpos
+    LDA #$78
+    STA entities+Entity::ypos
+    LDA #$00
+    STA entities+Entity::xvel
+    STA entities+Entity::yvel
+    LDA #EntityType::Player
+    STA entities+Entity::type
+
     ; initialise other stuff
+    LDA #%00000000
+    STA $2000
+    LDA #%00000000
+    STA $2001
+
+; initialise background hi and low
+    LDA #$10
+    STA seed
+    STA seed+1
+
+    LDA #$02
+    STA scrolly
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+    LDA #$C0
+    STA bgloadlo
+    LDA #$03
+    STA bgloadhi
+    LDY #$00
+
+    LDA $2002
+    LDA #$20
+    STA $2006
+    LDA #$00
+    STA $2006
+BGLOAD:
+    JSR prng
+    LSR
+    STA $2007
+    INY
+    CPY #$00
+    BNE SKIPGBINC
+    INC bghi
+SKIPGBINC:
+    DEC bgloadlo
+    LDA bgloadlo
+    CMP #$FF
+    BNE BGLOAD
+    DEC bgloadhi
+    LDA bgloadhi
+    CMP #$FF
+    BNE BGLOAD
+
+; configure for loading the attributes
+    LDA $2002
+    LDA #$23
+    STA $2006
+    LDA #$C0
+    STA $2006
+    LDX #$00
+    TXA
+ATTLOAD:
+    STA $2007
+    INX
+    CPX #$08
+    BNE ATTLOAD
+
+    LDA #%10000000
+    STA $2000
+    LDA #%00011110
+    STA $2001
+
     LDA #GameState::GamePlay
     STA gamestate
     JMP GAMELOOP
@@ -339,7 +465,9 @@ LOAD_NEW_GAME_STATE:
 PAUSED_STATE:
     LDA controller
     AND #$10
-    BEQ GAMELOOP
+    BNE unpausegamebuttonpressed
+    JMP GAMELOOP
+unpausegamebuttonpressed:
     LDA #GameState::GamePlay
     STA gamestate
     JMP hasdrawcompleted
@@ -956,6 +1084,14 @@ PALETTE:
     .byte $0d, $00, $10, $12
     .byte $0d, $00, $10, $12
     .byte $0d, $00, $10, $12
+
+TITLESCREEN:
+    .byte $fe, $00, $8f, 00, $ff, $04, $05, $06, $07, $08, $09, $ff
+    .byte $1a, $00, $ff, $14, $15, $16, $17, $18, $19, $ff
+    .byte $1a, $00, $ff, $24, $25, $26, $27, $28, $29, $ff
+    .byte $1a, $00, $ff, $34, $35, $36, $37, $38, $39, $ff
+    .byte $1a, $00, $ff, $44, $45, $46, $47, $48, $49, $ff
+    .byte $1a, $00, $ff, $54, $55, $56, $57, $58, $59, $ff, $ff 
 
 .segment "VECTORS"
     .word VBLANK
