@@ -121,6 +121,7 @@ RESET: ; boilerplate
     STX $2001
     STX $4010
 
+    BIT $2002   ; ensure clearing out the highest order bit
     JSR WAITFORVBLANK
 
     TXA
@@ -399,6 +400,8 @@ LOAD_NEW_GAME_STATE:
     STA $2000
     LDA #%00000000
     STA $2001
+
+    JSR WAITFORVBLANK
 
 ; initialise background hi and low
     LDA #$10
@@ -882,7 +885,6 @@ finishedbulletcollision:
 VBLANK:
 
     PHA
-    PHP
     TXA
     PHA
     TYA
@@ -1063,7 +1065,6 @@ donewithppu:
     TAY
     PLA
     TAX
-    PLP
     PLA
     INC drawcomplete
     RTI
@@ -1091,7 +1092,10 @@ TITLESCREEN:
     .byte $1a, $00, $ff, $24, $25, $26, $27, $28, $29, $ff
     .byte $1a, $00, $ff, $34, $35, $36, $37, $38, $39, $ff
     .byte $1a, $00, $ff, $44, $45, $46, $47, $48, $49, $ff
-    .byte $1a, $00, $ff, $54, $55, $56, $57, $58, $59, $ff, $ff 
+    .byte $1a, $00, $ff, $54, $55, $56, $57, $58, $59, $ff
+    .byte $1a, $00, $ff, $0a, $0b, $0c, $ff
+    .byte $1d, $00, $ff, $1a, $1b, $1c, $ff
+    .byte $ff
 
 .segment "VECTORS"
     .word VBLANK
