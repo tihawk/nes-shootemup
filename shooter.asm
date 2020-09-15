@@ -57,6 +57,7 @@
 .segment "ZEROPAGE"
 ; immediate vs zeropage mode of addressing memory (they have different timings) zeropage is in the first 255 bytes of memory
 ; 0x00 - 0xff
+gamestate:      .res 1
 controller: .res 1  ; stores state of controller
 scrollx:    .res 1  ; screen scroll
 scrolly:    .res 1
@@ -83,7 +84,6 @@ boundingleft:   .res 1
 boundingright:  .res 1
 boundingtop:    .res 1
 boundingbottom: .res 1
-gamestate:      .res 1
 temp:           .res 1
 
 .segment "CODE"
@@ -468,11 +468,28 @@ ATTLOAD:
 PAUSED_STATE:
     LDA controller
     AND #$10
-    BNE unpausegamebuttonpressed
-    JMP GAMELOOP
-unpausegamebuttonpressed:
+    BEQ chechunpausereleased
+    LDA buttonflag
+    ORA #$04
+    STA buttonflag
+    JMP hasdrawcompleted
+chechunpausereleased:
+    LDA buttonflag
+    AND #$04
+    BNE unpause
+    JMP hasdrawcompleted
+unpause:
+    LDA buttonflag
+    EOR #$04
+    STA buttonflag
     LDA #GameState::GamePlay
     STA gamestate
+
+;     BNE unpausegamebuttonpressed
+;     JMP hasdrawcompleted
+; unpausegamebuttonpressed:
+;     LDA #GameState::GamePlay
+;     STA gamestate
     JMP hasdrawcompleted
 
 GAMEPLAY_STATE:
@@ -545,9 +562,9 @@ checkstartrelease:
     LDA buttonflag
     EOR #$04
     STA buttonflag
-    LDA GameState::Paused
+    LDA #GameState::Paused
     STA gamestate
-    JMP hasdrawcompleted
+    ; JMP hasdrawcompleted
 
 checkb:
     LDA controller
