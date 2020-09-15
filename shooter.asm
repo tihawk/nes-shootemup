@@ -373,13 +373,26 @@ DONELOADINGTITLESCREEN:
     JMP GAMELOOP
 
 TITLE_SCREEN_STATE:
+.scope TitleScreenState
     LDA controller
     AND #$10
-    BNE startgamebuttonpressed
-    JMP GAMELOOP
-startgamebuttonpressed:
+    BEQ checkstartrelease
+    LDA buttonflag
+    ORA #$04
+    STA buttonflag
+    JMP hasdrawcompleted
+checkstartrelease:
+    LDA buttonflag
+    AND #$04
+    BNE startanewgame
+    JMP hasdrawcompleted
+startanewgame:
+    LDA buttonflag
+    EOR #$04
+    STA buttonflag
     LDA #GameState::LoadNewGame
     STA gamestate
+.endscope
     JMP hasdrawcompleted
 
 LOAD_NEW_GAME_STATE:
@@ -463,17 +476,18 @@ ATTLOAD:
 
     LDA #GameState::GamePlay
     STA gamestate
-    JMP GAMELOOP
+    JMP hasdrawcompleted
 
 PAUSED_STATE:
+.scope PausedGameState
     LDA controller
     AND #$10
-    BEQ chechunpausereleased
+    BEQ checkstartrelease
     LDA buttonflag
     ORA #$04
     STA buttonflag
     JMP hasdrawcompleted
-chechunpausereleased:
+checkstartrelease:
     LDA buttonflag
     AND #$04
     BNE unpause
@@ -484,12 +498,7 @@ unpause:
     STA buttonflag
     LDA #GameState::GamePlay
     STA gamestate
-
-;     BNE unpausegamebuttonpressed
-;     JMP hasdrawcompleted
-; unpausegamebuttonpressed:
-;     LDA #GameState::GamePlay
-;     STA gamestate
+.endscope
     JMP hasdrawcompleted
 
 GAMEPLAY_STATE:
